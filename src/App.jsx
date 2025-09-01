@@ -27,6 +27,13 @@ const resolveImage = (product) => {
   return first
 }
 
+// Utilidades para robustez de datos entre productos
+const getId = (p) => p?.id ?? p?.productId ?? p?._id
+const getPrice = (p) => {
+  const val = p?.price ?? p?.precio ?? p?.cost ?? p?.costo
+  return typeof val === 'string' ? Number(val) : val
+}
+const getStock = (p) => p?.stock ?? p?.existencias ?? p?.inventory ?? p?.cantidad
 
 // Componente: Barra de navegación superior
 function Navbar({ cartCount, onOpenCart }) {
@@ -118,7 +125,8 @@ function FilterBar({ filters, onChange }) {
 
 // Componentes atómicos: Precio, Disponibilidad y Botón Agregar
 function PriceTag({ price }) {
-  return <p className="card__price">{formatPrice(price)}</p>
+  const hasPrice = price !== undefined && price !== null && !Number.isNaN(Number(price))
+  return <p className="card__price">{hasPrice ? formatPrice(Number(price)) : 'Precio no disponible'}</p>
 }
 
 function AvailabilityBadge({ stock }) {
@@ -138,10 +146,11 @@ function AvailabilityBadge({ stock }) {
 }
 
 function AddToCartButton({ product, onAddToCart }) {
-  const hasStockInfo = product && product.stock !== undefined && product.stock !== null
-  const disabled = !product || (hasStockInfo && Number(product.stock) <= 0)
+  const stockVal = getStock(product)
+  const hasStockInfo = stockVal !== undefined && stockVal !== null
+  const disabled = !product || (hasStockInfo && Number(stockVal) <= 0)
   return (
-    <button className="btn" disabled={disabled} onClick={() => onAddToCart(product)}>
+    <button className="btn btn--primary" style={{ width: '100%' }} disabled={disabled} onClick={() => onAddToCart(product)}>
       {disabled ? 'Sin stock' : 'Agregar al carrito'}
     </button>
   )
@@ -158,8 +167,8 @@ function ProductCard({ product, onAddToCart }) {
       <div className="card__body">
         <h3 className="card__title">{product.title}</h3>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <PriceTag price={product.price} />
-          <AvailabilityBadge stock={product.stock} />
+          <PriceTag price={getPrice(product)} />
+          <AvailabilityBadge stock={getStock(product)} />
         </div>
         <AddToCartButton product={product} onAddToCart={onAddToCart} />
       </div>
@@ -176,7 +185,7 @@ function ProductGrid({ products, onAddToCart }) {
   return (
     <section className="grid">
       {products.map((p) => (
-        <ProductCard key={p.id} product={p} onAddToCart={onAddToCart} />
+        <ProductCard key={getId(p)} product={p} onAddToCart={onAddToCart} />
       ))}
     </section>
   )
@@ -223,21 +232,21 @@ function CartDrawer({ open, onClose, items, total, onInc, onDec, onRemove }) {
             <p className="empty">Tu carrito está vacío.</p>
           ) : (
             items.map(({ product, qty }) => (
-              <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: '0.75rem', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 12, padding: '0.5rem' }}>
+              <div key={getId(product)} style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: '0.75rem', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 12, padding: '0.5rem' }}>
                 <img src={resolveImage(product)} alt={product.title} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
                 <div style={{ display: 'grid', gap: '0.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                     <strong>{product.title}</strong>
-                    <button className="btn btn--ghost" onClick={() => onRemove(product.id)} aria-label="Quitar">🗑️</button>
+                    <button className="btn btn--ghost" onClick={() => onRemove(getId(product))} aria-label="Quitar">🗑️</button>
                   </div>
-                  <span className="card__price">{formatPrice(product.price)} c/u</span>
+                  <span className="card__price">{formatPrice(getPrice(product))} c/u</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <button className="btn" onClick={() => onDec(product.id)} aria-label="Disminuir">−</button>
+                    <button className="btn" onClick={() => onDec(getId(product))} aria-label="Disminuir">−</button>
                     <span>{qty}</span>
-                    <button className="btn" onClick={() => onInc(product.id)} aria-label="Aumentar">+</button>
+                    <button className="btn" onClick={() => onInc(getId(product))} aria-label="Aumentar">+</button>
                   </div>
                 </div>
-                <div style={{ fontWeight: 600 }}>{formatPrice(product.price * qty)}</div>
+                <div style={{ fontWeight: 600 }}>{formatPrice(getPrice(product) * qty)}</div>
               </div>
             ))
           )}
@@ -314,7 +323,7 @@ export default function App() {
         )
         setItems(items)
         setTotal(total)
-        setProductMap((prev) => ({ ...prev, ...Object.fromEntries(items.map((p) => [p.id, p])) }))
+        setProductMap((prev) => ({ ...prev, ...Object.fromEntries(items.map((p) => [getId(p), p])) }))
       } catch (err) {
         // Si el backend no está activo, mostraremos un error amigable
         setError('No se pudo cargar el catálogo. ¿Iniciaste el servidor en el puerto 4000?')
@@ -331,7 +340,8 @@ export default function App() {
 
   // Acción: agregar producto al carrito
   const handleAddToCart = (product) => {
-    setCart((prev) => ({ ...prev, [product.id]: (prev[product.id] || 0) + 1 }))
+    const id = getId(product)
+    setCart((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
   }
 
   const updateQty = (id, qty) => {
@@ -349,7 +359,7 @@ export default function App() {
 
   // Derivado: total del carrito (precio acumulado)
       const cartTotal = useMemo(() => {
-    return cartItems.reduce((acc, { product, qty }) => acc + product.price * qty, 0)
+    return cartItems.reduce((acc, { product, qty }) => acc + (getPrice(product) || 0) * qty, 0)
   }, [cartItems])
 
   return (
