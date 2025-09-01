@@ -27,15 +27,16 @@ const resolveImage = (product) => {
   return first
 }
 
+
 // Componente: Barra de navegación superior
-function Navbar({ cartCount }) {
+function Navbar({ cartCount, onOpenCart }) {
   return (
     <header className="nav">
       {/* Sección izquierda: Marca / título */}
       <div className="nav__brand">Sudaderas & Gorros</div>
       {/* Sección derecha: Indicador del carrito (futuro: botón para abrir modal/drawer) */}
       <div className="nav__actions">
-        <button className="btn btn--ghost" aria-label="Ver carrito">
+        <button className="btn btn--ghost" aria-label="Ver carrito" onClick={onOpenCart}>
           🛒 <span className="badge">{cartCount}</span>
         </button>
       </div>
@@ -44,6 +45,7 @@ function Navbar({ cartCount }) {
 }
 
 // Componente: Controles de filtrado y ordenamiento
+
 function FilterBar({ filters, onChange }) {
   // Manejadores locales que actualizan el objeto de filtros del padre
   const handleInput = (key) => (e) => onChange({ ...filters, [key]: e.target.value })
@@ -114,6 +116,37 @@ function FilterBar({ filters, onChange }) {
   )
 }
 
+// Componentes atómicos: Precio, Disponibilidad y Botón Agregar
+function PriceTag({ price }) {
+  return <p className="card__price">{formatPrice(price)}</p>
+}
+
+function AvailabilityBadge({ stock }) {
+  const hasStockInfo = stock !== undefined && stock !== null
+  const inStock = !hasStockInfo || Number(stock) > 0
+  const label = inStock ? `Disponible${hasStockInfo ? `: ${stock}` : ''}` : 'Agotado'
+  const style = {
+    display: 'inline-block',
+    padding: '0.125rem 0.5rem',
+    borderRadius: '999px',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    background: inStock ? 'rgba(16,185,129,.15)' : 'rgba(239,68,68,.15)',
+    color: inStock ? '#065f46' : '#7f1d1d',
+  }
+  return <span style={style}>{label}</span>
+}
+
+function AddToCartButton({ product, onAddToCart }) {
+  const hasStockInfo = product && product.stock !== undefined && product.stock !== null
+  const disabled = !product || (hasStockInfo && Number(product.stock) <= 0)
+  return (
+    <button className="btn" disabled={disabled} onClick={() => onAddToCart(product)}>
+      {disabled ? 'Sin stock' : 'Agregar al carrito'}
+    </button>
+  )
+}
+
 // Componente: Tarjeta de producto
 function ProductCard({ product, onAddToCart }) {
   const img = resolveImage(product)
@@ -124,10 +157,11 @@ function ProductCard({ product, onAddToCart }) {
       </div>
       <div className="card__body">
         <h3 className="card__title">{product.title}</h3>
-        <p className="card__price">{formatPrice(product.price)}</p>
-        <button className="btn" onClick={() => onAddToCart(product)}>
-          Agregar al carrito
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <PriceTag price={product.price} />
+          <AvailabilityBadge stock={product.stock} />
+        </div>
+        <AddToCartButton product={product} onAddToCart={onAddToCart} />
       </div>
     </article>
   )
@@ -142,13 +176,83 @@ function ProductGrid({ products, onAddToCart }) {
   return (
     <section className="grid">
       {products.map((p) => (
-        <ProductCard key={p.id} product={p} onAddToCart={onAddToCart} />)
-      )}
+        <ProductCard key={p.id} product={p} onAddToCart={onAddToCart} />
+      ))}
     </section>
   )
 }
 
+function CartDrawer({ open, onClose, items, total, onInc, onDec, onRemove }) {
+  if (!open) return null
+  return (
+    <>
+      <div
+        role="presentation"
+        onClick={onClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          zIndex: 40,
+        }}
+      />
+      <aside
+        aria-label="Carrito"
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          height: '100dvh',
+          width: 'min(480px, 100%)',
+          background: 'var(--surface)',
+          borderLeft: '1px solid var(--border)',
+          padding: '1rem',
+          display: 'grid',
+          gridTemplateRows: 'auto 1fr auto',
+          gap: '1rem',
+          zIndex: 50,
+          overflow: 'hidden',
+        }}
+      >
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>Tu carrito</h2>
+          <button className="btn btn--ghost" onClick={onClose} aria-label="Cerrar">✕</button>
+        </header>
+        <div style={{ overflow: 'auto', display: 'grid', gap: '0.75rem' }}>
+          {items.length === 0 ? (
+            <p className="empty">Tu carrito está vacío.</p>
+          ) : (
+            items.map(({ product, qty }) => (
+              <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: '0.75rem', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 12, padding: '0.5rem' }}>
+                <img src={resolveImage(product)} alt={product.title} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
+                <div style={{ display: 'grid', gap: '0.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <strong>{product.title}</strong>
+                    <button className="btn btn--ghost" onClick={() => onRemove(product.id)} aria-label="Quitar">🗑️</button>
+                  </div>
+                  <span className="card__price">{formatPrice(product.price)} c/u</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button className="btn" onClick={() => onDec(product.id)} aria-label="Disminuir">−</button>
+                    <span>{qty}</span>
+                    <button className="btn" onClick={() => onInc(product.id)} aria-label="Aumentar">+</button>
+                  </div>
+                </div>
+                <div style={{ fontWeight: 600 }}>{formatPrice(product.price * qty)}</div>
+              </div>
+            ))
+          )}
+        </div>
+        <footer style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+          <div><strong>Total:</strong> {formatPrice(total)}</div>
+          <button className="btn btn--primary" disabled={items.length === 0}>Finalizar compra</button>
+        </footer>
+      </aside>
+    </>
+  )
+}
+
 export default function App() {
+
   // Estado: filtros de búsqueda
   const [filters, setFilters] = useState({
     q: '',
@@ -167,6 +271,9 @@ export default function App() {
   // Estado: carrito simple en memoria
   // Estructura: { [productId]: quantity }
   const [cart, setCart] = useState({})
+  const [isCartOpen, setIsCartOpen] = useState(false)
+  const [productMap, setProductMap] = useState({})
+
 
   // Derivado: cantidad total de productos en el carrito
   const cartCount = useMemo(
@@ -174,7 +281,19 @@ export default function App() {
     [cart]
   )
 
+  const productsById = productMap
+
+
+  const cartItems = useMemo(
+    () =>
+      Object.entries(cart)
+        .map(([id, qty]) => ({ product: productsById[id], qty }))
+        .filter((i) => i.product),
+    [cart, productsById]
+  )
+
   // Efecto: cargar productos cada que cambien los filtros
+
   useEffect(() => {
     const controller = new AbortController()
 
@@ -195,6 +314,7 @@ export default function App() {
         )
         setItems(items)
         setTotal(total)
+        setProductMap((prev) => ({ ...prev, ...Object.fromEntries(items.map((p) => [p.id, p])) }))
       } catch (err) {
         // Si el backend no está activo, mostraremos un error amigable
         setError('No se pudo cargar el catálogo. ¿Iniciaste el servidor en el puerto 4000?')
@@ -214,19 +334,29 @@ export default function App() {
     setCart((prev) => ({ ...prev, [product.id]: (prev[product.id] || 0) + 1 }))
   }
 
+  const updateQty = (id, qty) => {
+    setCart((prev) => {
+      const next = { ...prev }
+      if (qty <= 0) delete next[id]
+      else next[id] = qty
+      return next
+    })
+  }
+  const incQty = (id) => updateQty(id, (cart[id] || 0) + 1)
+  const decQty = (id) => updateQty(id, (cart[id] || 0) - 1)
+  const removeItem = (id) => updateQty(id, 0)
+
+
   // Derivado: total del carrito (precio acumulado)
-  const cartTotal = useMemo(() => {
-    return Object.entries(cart).reduce((acc, [id, qty]) => {
-      const prod = items.find((p) => p.id === id)
-      if (!prod) return acc
-      return acc + prod.price * qty
-    }, 0)
-  }, [cart, items])
+      const cartTotal = useMemo(() => {
+    return cartItems.reduce((acc, { product, qty }) => acc + product.price * qty, 0)
+  }, [cartItems])
 
   return (
     <div className="app">
       {/* Barra superior */}
-      <Navbar cartCount={cartCount} />
+      <Navbar cartCount={cartCount} onOpenCart={() => setIsCartOpen(true)} />
+
 
       {/* Contenedor principal */}
       <main className="container">
@@ -246,7 +376,19 @@ export default function App() {
         )}
       </main>
 
+      <CartDrawer
+        open={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        items={cartItems}
+        total={cartTotal}
+        onInc={incQty}
+        onDec={decQty}
+        onRemove={removeItem}
+      />
+      
+      
       {/* Resumen fijo del carrito (simple) */}
+      
       <footer className="cartbar">
         <div>
           <strong>Carrito:</strong> {cartCount} artículos
